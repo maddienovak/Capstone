@@ -2,8 +2,6 @@
 
 #input parameter from casting process plan -- in order to have sum and cost ???
 
-
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd 
@@ -20,27 +18,36 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
-temp_data = pd.read_csv(r"~/Desktop/DatasetFinalNumbers.csv")
+temp_data = pd.read_csv(r"~/Desktop/capstone/DatasetFinalNumbers.csv")
 
 #converting string to numbers
-
+#process str to int 
 temp_data.loc[(temp_data['Process'] == '3D-Printing', 'Process_Type')] = 0 #3D-printing 
 temp_data.loc[(temp_data['Process'] == 'Machining', 'Process_Type')] = 1 #Machining
 temp_data.loc[(temp_data['Process'] == 'Welding', 'Process_Type')] = 2 #Welding
 temp_data.loc[(temp_data['Process'] == 'Casting', 'Process_Type')] = 3 #3D-printing 
 
+
+#will need to be changed for our database
+#material for each process 
+temp_data.loc[(temp_data['Process'] == '3D-Printing', 'Material_Type')] = 0 #ABS
+temp_data.loc[(temp_data['Process'] == 'Machining', 'Material_Type')] = 1 #Aluminum
+temp_data.loc[(temp_data['Process'] == 'Welding', 'Material_Type')] = 1
+temp_data.loc[(temp_data['Process'] == 'Casting', 'Material_Type')] = 1 
+
 #changing from float to int
 temp_data['Process_Type'] = temp_data['Process_Type'].apply(np.int64)
-    
+temp_data['Material_Type'] = temp_data['Material_Type'].apply(np.int64)   
 
 #removing time for now ... 
 temp_data.drop(columns=['Time (hr)'])
-
+temp_data.drop(columns=['Material'])
 
 #randSamp = temp_data.sample(5000)
 Y = np.array(temp_data[['Process_Type']])
 
 X = temp_data[[  
+    'Process',
     'advanced_face', 
     'axis2_placement_3d', 
     'cartesian_point', 
@@ -76,102 +83,77 @@ X = temp_data[[
 
 X = np.array(X)
 
-
-#logistic regression (test)
-
-#spliting data into test and train 
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size = 0.5)
-
-lr = LogisticRegression(random_state = 0)
-lr.fit(X_train, Y_train)
-Y_pred = lr.predict(X_test)
-Y_test['predicted'] = Y_pred
-df_out = pd.merge(temp_data,Y_test[['predicted']],how = 'left',left_index = True, right_index = True)
-
-#determining if model was relevant 
-print("Accuracy:",metrics.accuracy_score(Y_test.astype(int), Y_pred.astype(int)))
-print(confusion_matrix(Y_test,Y_pred))  
-print(classification_report(Y_test,Y_pred))  
-print(accuracy_score(Y_test, Y_pred))
-
-###feature importance 
-
 #visual heat-map
-plt.figure(figsize=(25,5))
+#1 2 3 4 5 7 8 9 13 26 27 28 29 30 
+heatmap_data = temp_data.drop(axis=0, columns=['Name', 'Process','Material', 'Cost', 'Time (hr)', 'Number of Steps'])
+plt.figure(figsize=(50,20))
 cor = temp_data.corr()
-sns.heatmap(cor, annot=True, cmap=plt.cm.Reds)
+sns.heatmap(cor, annot=True, cmap=plt.cm.Blues)
 plt.show()
 
-cor_target = abs(cor['Process_Type'])
-relevant_features = cor_target[cor_target>0.5]
-relevant_features
 
-from sklearn.feature_selection import RFE
-from sklearn.linear_model import LinearRegression
-nof_list = np.arange(1,28)
-high_score = 0 
+#multinomial logistic regression 
 
-nof = 0 
-score_list = []
-for n in range(len(nof_list)):
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size = 0.3)
-    model = LogisticRegression()
-    rfe = RFE(model,nof_list[n])
-    X_train_rfe = rfe.fit_transform(X_train,Y_train)
-    X_test_rfe = rfe.transform(X_test)
-    model.fit(X_train_rfe,Y_train)
-    score = model.score(X_test_rfe,Y_test)
-    score_list.append(score)
-    if(score>high_score):
-        high_score = score
-        nof = nof_list[n]
-print("Optimum number of features: %d" %nof)
-print("Score with %d features: %f" % (nof, high_score))
+#re-do 
 
+X = temp_data.drop(axis=0, columns=['Name', 'Process','Material', 'Cost', 'Time (hr)', 'Number of Steps'])
+Y = temp_data.Process
 
+#sizing 
+print(X.shape)
+print(Y.shape)
 
-cols = list(X.columns)
-model = LinearRegression()
-#Initializing RFE model
-rfe = RFE(model, 10)             
-#Transforming data using RFE
-X_rfe = rfe.fit_transform(X,Y)  
-#Fitting the data to model
-model.fit(X_rfe,Y)              
-temp = pd.Series(rfe.support_,index = cols)
-selected_features_rfe = temp[temp==True].index
-print(selected_features_rfe)
+X_train, X_test, y_train, y_test = train_test_split(X,Y, test_size = 0.33, random_state = 42)
 
+#need to install xgboost privately 
+#conda install -c anaconda py-xgboost -- on python interactive
 
-#https://towardsdatascience.com/feature-selection-with-pandas-e3690ad8504b
+#like gradient boosting but optimizied 
+from xgboost import XGBClassifier
+xgb = XGBClassifier(booster='gbtree', objective='multi:softprob', random_state=42, eval_metric="auc", num_class=4)
+xgb.fit(X_train,y_train)
 
-#good baseline model
+from sklearn.metrics import roc_auc_score
+from sklearn import preprocessing
 
+# Use trained model to predict output of test dataset
+val = xgb.predict(X_test)
 
-######
+lb = preprocessing.LabelBinarizer()
+lb.fit(y_test)
 
+y_test_lb = lb.transform(y_test)
+val_lb = lb.transform(val)
 
-#using random forest 
+roc_auc_score(y_test_lb, val_lb, average='macro')
 
-rf = RandomForestClassifier(random_state = 0, n_estimators = 500, min_samples_split = 10, min_samples_leaf = 4, max_features = 'sqrt', max_depth = 40, bootstrap = True)
-rf.fit(X_train, Y_train)
-#prediction
-Y_pred = rf.predict(X_test)
+output = pd.DataFrame()
+output['Expected Output'] = y_test
+output['Predicted Output'] = val
+output.head()
 
-print(rf.feature_importances_) 
-auc = metrics.roc_auc_score(Y_test, Y_pred)
-print(auc)
-print("Accuracy:",metrics.accuracy_score(Y_test.astype(int), Y_pred.astype(int)))
-print(confusion_matrix(Y_test,Y_pred))  
-print(classification_report(Y_test,Y_pred))  
-print(accuracy_score(Y_test, Y_pred))
+### FEATURE IMPORTANCE 
 
+print(xgb.feature_importances_)
+for col in temp_data.columns: 
+    print(col) 
 
-#%%
-Y_pred_proba = lr.predict_proba(X_test)[::,1]
-fpr, tpr, _ = metrics.roc_curve(Y_test, Y_pred_proba)
-auc = metrics.roc_auc_score(Y_test, Y_pred_proba)
+#visualization
 
-plt.plot(fpr, tpr, label = "Autopay Variables, auc = " + str(auc))
-plt.legend(loc = 4)
-plt.show()
+pyplot.bar(range(len(xgb.feature_importances_)), xgb.feature_importances_)
+pyplot.show()
+
+#more detailed chart
+plot_importance(xgb)
+pyplot.show()
+
+### CROSS VALIDATION
+from numpy import loadtxt
+import xgboost
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+
+model = xgboost.XGBClassifier()
+kfold = KFold(n_splits=10, random_state=)
+results = cross_val_score(model, X, Y, cv=kfold)
+print("Accuracy: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))
