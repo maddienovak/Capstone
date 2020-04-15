@@ -1,2 +1,2 @@
-# Capstone
-PSU ARL 5 capstone code 
+# PENN STATE CAPSTONE (senior design project)
+This project is for my senior design project at Penn State. My team and I are investigating how to incorporate industrial engineering with machine learning and AI. We are specifically looking at predicting manufactoring process types (welding, 3-D printing, casting, machining) and then return the given manufacturing plans in csv for the specific part. The dataset is compiled of over 500 different makes of each part and its given parameters. I am explicting using xgboost model for this project because I found that it worked best for this dataset. 
