@@ -1,7 +1,5 @@
 #PSU ARL 5 Capstone 
 
-#input parameter from casting process plan -- in order to have sum and cost ???
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd 
@@ -18,43 +16,44 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
 
-temp_data = pd.read_csv(r"~/Desktop/capstone/DatasetFinalNumbers.csv")
-temp_data.rename(columns = lambda x: x.replace(' ', '_'), inplace=True)
+#reading in csv from dataset file
+df = pd.read_csv(r"~/Desktop/capstone/dataset_2020.csv")
+df.set_index('filename', inplace=True)
 
-temp_data.reset_index(level=0, inplace=True)
-
-#converting string to numbers
-#process str to int 
-#temp_data.loc[(temp_data['Process'] == '3D-Printing', 'Process_Type')] = 0 #3D-printing 
-##temp_data.loc[(temp_data['Process'] == 'Welding', 'Process_Type')] = 2 #Welding
-#temp_data.loc[(temp_data['Process'] == 'Casting', 'Process_Type')] = 3 #3D-printing 
-
-
-#will need to be changed for our database
-#material for each process 
-#temp_data.loc[(temp_data['Process'] == '3D-Printing', 'Material_Type')] = 0 #ABS
-#temp_data.loc[(temp_data['Process'] == 'Machining', 'Material_Type')] = 1 #Aluminum
-#temp_data.loc[(temp_data['Process'] == 'Welding', 'Material_Type')] = 1
-#temp_data.loc[(temp_data['Process'] == 'Casting', 'Material_Type')] = 1 
+#Adding material type for model per requested
+df.loc[(df['Process'] == '3D-Printing', 'Material_Type')] = 0 #ABS
+df.loc[(df['Process'] == 'Machining', 'Material_Type')] = 1 #Aluminum
+df.loc[(df['Process'] == 'Welding', 'Material_Type')] = 1
+df.loc[(df['Process'] == 'Casting', 'Material_Type')] = 1 
 
 #changing from float to int
 #temp_data['Process_Type'] = temp_data['Process_Type'].apply(np.int64)
-#emp_data['Material_Type'] = temp_data['Material_Type'].apply(np.int64)   
+df['Material_Type'] = df['Material_Type'].apply(np.int64)   
 
- 
-temp_data.drop(columns=['Material']
 
 #xgboost classifier 
-#re-do 
 
-X = temp_data.drop(axis=0, columns=['Name', 'Process', 'closed_shell', 'Material', 'Cost', 'Time_(hr)', 'Number_of_Steps'])
-Y = temp_data.Process
+
+X = df[[
+    'length',
+    'width', 
+    'height',
+    'linear_properties',
+    'surface_properties',
+    'volume_properties',
+    'Geom_Vertex_Unknown'
+
+]]
+Y = df.Process
 
 #sizing 
 print(X.shape)
 print(Y.shape)
 
+
 X_train, X_test, y_train, y_test = train_test_split(X,Y, test_size = 0.33, random_state = 42)
+
+X_test.set_index('filename', inplace=True)
 
 #need to install xgboost privately 
 #conda install -c anaconda py-xgboost -- on python interactive
@@ -79,13 +78,15 @@ val_lb = lb.transform(val)
 roc_auc_score(y_test_lb, val_lb, average='macro')
 
 output = pd.DataFrame()
-output['Expected Output'] = y_test
 output['Predicted Output'] = val
+output['filename'] = X_test.index
 output.reset_index(level=0, inplace=True)
-output = output.merge(temp_data,on='index')
-output = output.drop(columns=['Expected Output'])
+df.reset_index(level=0, inplace=True)
+output = output.merge(df, how='left', on='filename')
 output.head()
 
+##writing model outputs to csv 
+output.to_csv(r"~/Desktop/capstone/pred_df.csv")
 
 ### CROSS VALIDATION
 from numpy import loadtxt
@@ -100,210 +101,37 @@ print("Accuracy: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))
 
 #cross validation is better with 10 splits than 5 
 
-#cross validation with xgboost 
-https://machinelearningmastery.com/evaluate-gradient-boosting-models-xgboost-python/
+output.loc[(output['Predicted Output'] == '3D-Printing', 'Process_Type')] = 0
+output.loc[(output['Predicted Output'] == 'Welding', 'Process_Type')] = 1
+output.loc[(output['Predicted Output'] == 'Casting', 'Process_Type')] = 2
+output.loc[(output['Predicted Output'] == 'Machining', 'Process_Type')] = 3
 
-#helpful info for this type of classifier 
-#https://towardsdatascience.com/a-step-by-step-guide-to-building-a-multiclass-classifier-for-breast-tissue-classification-5b685d765e97
+output['Process_Type'] = output['Process_Type'].apply(np.int64)
 
+####OUTPUT ALL MANUFACTURING PLANS
 
-################################################################
-#code for retrieving manufacturing plans
-
-
-#https://stackoverflow.com/questions/42102674/how-can-i-see-the-formulas-of-an-excel-spreadsheet-in-pandas-python
-#https://stackoverflow.com/questions/57595318/pandas-retrieve-values-from-one-dataframe-and-do-calculation-on-another-datafram
-
-
-###Manufacturing plans
-three_d_plans = pd.read_csv(r"~/Desktop/manufacturing_plans/3D_printing.csv")
-machining_plans = pd.read_csv(r"~/Desktop/manufacturing_plans/cnc_milling.csv")
-welding_plans = pd.read_csv(r"~/Desktop/manufacturing_plans/welding_plan.csv")
-casting_plans = pd.read_csv(r"~/Desktop/manufacturing_plans/casting_plan.csv")
-
-####miller code csv
-
-m_3 = pd.read_csv(r"~/Desktop/manufacturing_plans/m_code/3D_printing_results.csv")
-m_casting = pd.read_csv(r"~/Desktop/manufacturing_plans/m_code/casting_results.csv")
-m_machining = pd.read_csv(r"~/Desktop/manufacturing_plans/m_code/machining_results.csv")
-m_welding = pd.read_csv(r"~/Desktop/manufacturing_plans/m_code/Welding_results.csv")
-
-
-#data cleaning 
-
-m_3.drop([
-    'num_faces', 
-    'num_wires',
-    'num_edges',
-    'Geom_Plane',
-    'Geom_CylindricalSurface',
-    'Geom_ConicalSurface',
-    'Geom_SphericalSurface',
-    'Geom_ToroidalSurface',
-    'Geom_BezierSurface',
-    'Geom_BSplineSurface',
-    'Geom_SurfaceOfRevolution',
-    'Geom_SurfaceOfLinearExtrusion',
-    'Geom_Surface',
-    'Geom_OffsetSurface',
-   'Geom_Surface_Unknown',
-    'Geom_Wire_Unknown',
-    'Geom_Line',
-    'Geom_Circle',
-    'Geom_Ellipse',
-    'Geom_Hyperbola',
-    'Geom_Parabola',
-    'Geom_BezierCurve',
-    'Geom_BSplineCurve',
-    'Geom_Curve',
-    'Geom_Edge_Unknown'], axis = 1)
-
-m_3["filename"] = m_3["filename"].str.replace("./step-files/", "")
-m_3['Process']='3D-Printing'
-
-##
-
-m_casting.dropna(axis=0, how='any', thresh=None, subset=None, inplace=False)
-
-m_casting.drop([
-    'num_faces', 
-    'num_wires',
-    'num_edges',
-    'Geom_Plane',
-    'Geom_CylindricalSurface',
-    'Geom_ConicalSurface',
-    'Geom_SphericalSurface',
-    'Geom_ToroidalSurface',
-    'Geom_BezierSurface',
-    'Geom_BSplineSurface',
-    'Geom_SurfaceOfRevolution',
-    'Geom_SurfaceOfLinearExtrusion',
-    'Geom_Surface',
-    'Geom_OffsetSurface',
-   'Geom_Surface_Unknown',
-    'Geom_Wire_Unknown',
-    'Geom_Line',
-    'Geom_Circle',
-    'Geom_Ellipse',
-    'Geom_Hyperbola',
-    'Geom_Parabola',
-    'Geom_BezierCurve',
-    'Geom_BSplineCurve',
-    'Geom_Curve',
-    'Geom_Edge_Unknown'], axis = 1)
-
-m_casting["filename"] = m_casting["filename"].str.replace("./step-files/", "")
-
-m_casting['Process']='Casting'
-##
-
-m_machining.drop([
-    'num_faces', 
-    'num_wires',
-    'num_edges',
-    'Geom_Plane',
-    'Geom_CylindricalSurface',
-    'Geom_ConicalSurface',
-    'Geom_SphericalSurface',
-    'Geom_ToroidalSurface',
-    'Geom_BezierSurface',
-    'Geom_BSplineSurface',
-    'Geom_SurfaceOfRevolution',
-    'Geom_SurfaceOfLinearExtrusion',
-    'Geom_Surface',
-    'Geom_OffsetSurface',
-   'Geom_Surface_Unknown',
-    'Geom_Wire_Unknown',
-    'Geom_Line',
-    'Geom_Circle',
-    'Geom_Ellipse',
-    'Geom_Hyperbola',
-    'Geom_Parabola',
-    'Geom_BezierCurve',
-    'Geom_BSplineCurve',
-    'Geom_Curve',
-    'Geom_Edge_Unknown'], axis = 1)
-
-m_machining["filename"] = m_machining["filename"].str.replace("./step-files/", "")
-
-m_machining['Process']='Machining'
-
-##
-m_welding.drop([
-    'num_faces', 
-    'num_wires',
-    'num_edges',
-    'Geom_Plane',
-    'Geom_CylindricalSurface',
-    'Geom_ConicalSurface',
-    'Geom_SphericalSurface',
-    'Geom_ToroidalSurface',
-    'Geom_BezierSurface',
-    'Geom_BSplineSurface',
-    'Geom_SurfaceOfRevolution',
-    'Geom_SurfaceOfLinearExtrusion',
-    'Geom_Surface',
-    'Geom_OffsetSurface',
-   'Geom_Surface_Unknown',
-    'Geom_Wire_Unknown',
-    'Geom_Line',
-    'Geom_Circle',
-    'Geom_Ellipse',
-    'Geom_Hyperbola',
-    'Geom_Parabola',
-    'Geom_BezierCurve',
-    'Geom_BSplineCurve',
-    'Geom_Curve',
-    'Geom_Edge_Unknown'], axis = 1)
-
-m_welding["filename"] = m_welding["filename"].str.replace("./step-files/", "")
-
-m_welding['Process']='Welding'
-
-#appending into one with each process
-x_feat = m_welding.append(m_machining, ignore_index=False, verify_integrity=False, sort=None)
-x_feat = fin.append(m_casting, ignore_index=False, verify_integrity=False, sort=None)
-x_feat = fin.append(m_3, ignore_index=False, verify_integrity=False, sort=None)
-
-
-###3-D printing
-#[4,5] formula 
-def time_3D(row):
-    for i in row:
-        return row['volume_properties'] + (0.2 * 0.2 * 3.14 * 60)
-
-x_feat['time_3D'] = x_feat.apply(time_3D, axis=1)
-
-###Welding
-
-def time_welding(row):
-    for i in row:
-        return row['length'] * 3
-
-x_feat['time_welding'] = x_feat.apply(time_welding, axis=1)
-
-###Casting
-
-def time_casting20(row):
-    c=2
-    for i in row:
-        return c * (row['volume_properties']/row['surface_properties'])**2
-
-x_feat['time_casting20'] = x_feat.apply(time_casting20, axis=1)
-
-def time_casting23(row):
-    c=2
-    for i in row:
-        return c * (row['volume_properties']/row['surface_properties'])**2
-
-x_feat['time_casting23'] = x_feat.apply(time_casting23, axis=1)
-
-
-def time_casting24(row):
-    for i in row:
-        return row['surface_properties'] * 0.5
-
-x_feat['time_casting24'] = x_feat.apply(time_casting24, axis=1)
+ 
+for i in output['Process_Type']:
+    if i == 0:
+        three_d_plans.at[3,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_3D']))
+        three_d_plans.at[7,'Time (min)'] = list(filter(lambda num: num != 0.0, output['total_3D_time']))
+        three_d_plans.at[8,'Operation Description'] = list(filter(lambda num: num != 0.0, output['cost_3D']))
+        three_d_plans.at[9,'Operation Description'] = list(filter(lambda num: num != 0.0, output['cost_3D']))
+    elif i == 1:
+        welding_plans.at[5,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_welding']))
+        welding_plans.at[8,'Time (min)'] = list(filter(lambda num: num != 0.0, output['total_welding_time']))
+        welding_plans.at[9,'Operation Description'] = list(filter(lambda num: num != 0.0, output['welding_cost']))
+    elif i == 2:
+        casting_plans.at[0,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_casting1']))
+        casting_plans.at[19,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_casting20']))
+        casting_plans.at[22,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_casting23']))
+        casting_plans.at[23,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_casting24']))
+        casting_plans.at[24,'Time (min)'] = list(filter(lambda num: num != 0.0, output['total_casting_time']))
+        casting_plans.at[25,'Operation Description'] = list(filter(lambda num: num != 0.0, output['casting_cost']))
+    elif i == 3: 
+        machining_plans.at[4,'Time (min)'] = list(filter(lambda num: num != 0.0, output['time_machining']))
+        machining_plans.at[6,'Time (min)'] = list(filter(lambda num: num != 0.0, output['total_machining_time']))
+        machining_plans.at[7,'Operation Description'] = list(filter(lambda num: num != 0.0, output['machining_cost']))
 
 
 
@@ -312,27 +140,6 @@ x_feat['time_casting24'] = x_feat.apply(time_casting24, axis=1)
 
 
 
-for column in temp_data[['Name', 'Process']]:
-    if 
-
-for column in temp_data[['Name', 'Process']]:
-    if temp_data['Process'].str.contains('3D-Printing'):
-        temp_data['d'] = temp_data.apply(time_row4, axis=1)
-    else:
-        print('no')
 
 
 
-
-plans = pd.DataFrame(output, columns = ['index', 'Predicted_Output', 'Name']) ###here i would also add the columns needed for formulas
-plans.to_csv(r"~/Desktop/output.csv")
-
-Casting = pd.DataFrame(plans[plans.Predicted_Output.str.contains('Casting',case=False)])
-printing = pd.DataFrame(plans[plans.Predicted_Output.str.contains('3D-Printing',case=False)])
-Welding = pd.DataFrame(plans[plans.Predicted_Output.str.contains('Welding',case=False)])
-Machining = pd.DataFrame(plans[plans.Predicted_Output.str.contains('Machining',case=False)])
-
-Casting_plan = pd.read_csv(r"~/Desktop/3D_plan.csv")
-printing_plan = pd.read_csv(r"~/Desktop/3D_plan.csv")
-Welding_plan = pd.read_csv(r"~/Desktop/3D_plan.csv")
-Machining_plan = pd.read_csv(r"~/Desktop/3D_plan.csv")
